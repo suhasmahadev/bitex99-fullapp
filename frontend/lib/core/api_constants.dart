@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // SETUP REQUIRED BEFORE RUNNING ON REAL DEVICE:
 // 1. Connect phone and laptop to same WiFi network
@@ -23,7 +25,13 @@
 ///
 class ApiConstants {
   // ── Real-device override (only used for non-web, non-emulator) ──────────
-  static const String baseIP = '10.156.203.215';
+  static const String _deviceIP = '10.156.203.215';
+  static const String _configuredIP = String.fromEnvironment('BITEX_API_HOST');
+  static String get baseIP {
+    if (_configuredIP.isNotEmpty) return _configuredIP;
+    return kIsWeb ? 'localhost' : _deviceIP;
+  }
+
   static const String basePort = '8000';
 
   // ── Derived base URLs ────────────────────────────────────────────────────
