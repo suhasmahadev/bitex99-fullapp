@@ -492,7 +492,7 @@ class _DeliveryRequestOverlayState extends State<_DeliveryRequestOverlay>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 45))..forward();
+    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 200))..forward();
   }
 
   @override
@@ -529,11 +529,11 @@ class _DeliveryRequestOverlayState extends State<_DeliveryRequestOverlay>
           AnimatedBuilder(
             animation: _controller,
             builder: (_, __) {
-              final left = (45 - _controller.value * 45).ceil();
+              final left = (200 - _controller.value * 200).ceil();
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('${left}s'),
+                  Text('Accept in ${left}s'),
                   LinearProgressIndicator(value: 1 - _controller.value),
                 ],
               );

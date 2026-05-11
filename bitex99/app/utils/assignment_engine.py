@@ -70,8 +70,7 @@ SELECT
     )))) AS distance_km
 FROM delivery_partners dp
 WHERE dp.is_online = TRUE
-  AND dp.city = :city
-  AND dp.last_location_at > now() - INTERVAL '5 minutes'
+  AND dp.last_location_at > now() - INTERVAL '10 minutes'
   AND NOT EXISTS (
     SELECT 1 FROM delivery_assignments da
     WHERE da.partner_id = dp.id
@@ -112,8 +111,7 @@ SELECT
     )))) AS distance_km
 FROM delivery_partners dp
 WHERE dp.is_online = TRUE
-  AND dp.city = :city
-  AND dp.last_location_at > now() - INTERVAL '5 minutes'
+  AND dp.last_location_at > now() - INTERVAL '10 minutes'
   AND NOT EXISTS (
     SELECT 1 FROM delivery_assignments da
     WHERE da.partner_id = dp.id
@@ -161,7 +159,7 @@ async def find_nearest_partners(
     restaurant_lng: float,
     city: str,
     db: AsyncSession,
-    limit: int = 10,
+    limit: int = 5,
     rejected_ids: set[str] | None = None,
 ) -> list[PartnerWithDistance]:
     """
@@ -177,7 +175,6 @@ async def find_nearest_partners(
     params: dict[str, Any] = {
         "rest_lat": restaurant_lat,
         "rest_lng": restaurant_lng,
-        "city": city,
         "limit": limit,
     }
 
@@ -196,7 +193,7 @@ async def find_nearest_partners(
     partners = _parse_partners(rows)
 
     logger.info(
-        "Found %d eligible partners within %s (rest: %.4f, %.4f) excluded=%d",
+        "Found %d eligible partners by real GPS near %s (rest: %.4f, %.4f) excluded=%d",
         len(partners), city, restaurant_lat, restaurant_lng,
         len(rejected_ids) if rejected_ids else 0,
     )

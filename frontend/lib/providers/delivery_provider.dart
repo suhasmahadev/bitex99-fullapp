@@ -122,12 +122,22 @@ class DeliveryProvider extends ChangeNotifier {
 
   void _handleAssignmentEvent(Map<String, dynamic> event) {
     final type = (event['type'] ?? event['event'] ?? '').toString();
-    final data = event['assignment'] ?? event['order'] ?? event['data'] ?? event;
+    final data = type == 'NEW_ORDER'
+        ? event
+        : event['assignment'] ?? event['order'] ?? event['data'] ?? event;
     if (data is! Map) return;
     final map = Map<String, dynamic>.from(data);
     if (type == 'NEW_ORDER' || map['order'] is Map) {
-      _latestRequest = map;
-      final orderMap = map['order'] is Map ? Map<String, dynamic>.from(map['order'] as Map) : map;
+      final assignmentMap = map['assignment'] is Map
+          ? Map<String, dynamic>.from(map['assignment'] as Map)
+          : null;
+      final nestedOrder = assignmentMap == null ? null : assignmentMap['order'];
+      _latestRequest = assignmentMap ?? map;
+      final orderMap = map['order'] is Map
+          ? Map<String, dynamic>.from(map['order'] as Map)
+          : nestedOrder is Map
+              ? Map<String, dynamic>.from(nestedOrder)
+              : map;
       final order = OrderModel.fromJson(orderMap);
       _availableOrders.removeWhere((item) => item.id == order.id);
       _availableOrders.insert(0, order);

@@ -269,7 +269,7 @@ class OrderManagementService:
 
         try:
             from app.services.assignment_service import AssignmentService
-            await AssignmentService(self._db, redis).auto_assign_partner(order.id)
+            asyncio.create_task(AssignmentService(self._db, redis).auto_assign_partner(order.id))
         except Exception as e:
             logger.warning("Failed to auto-assign delivery partner: %s", e)
 

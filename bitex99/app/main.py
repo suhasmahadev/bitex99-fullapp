@@ -301,11 +301,24 @@ async def partner_location_ws(websocket: WebSocket, token: str = Query(...)):
     try:
         while True:
             data = await websocket.receive_json()
+            lat = data.get('latitude', 0)
+            lng = data.get('longitude', 0)
             async with AsyncSessionLocal() as db:
+                from app.models.delivery_partner import DeliveryPartner
+                from sqlalchemy import update
+                await db.execute(
+                    update(DeliveryPartner)
+                    .where(DeliveryPartner.id == partner_id)
+                    .values(
+                        current_latitude=lat,
+                        current_longitude=lng,
+                        last_location_at=datetime.now(UTC),
+                    )
+                )
                 await location_service.update_location(
                     partner_id,
-                    data.get('latitude', 0),
-                    data.get('longitude', 0),
+                    lat,
+                    lng,
                     data.get('speed_kmph'),
                     data.get('heading_degrees'),
                     data.get('accuracy_meters'),

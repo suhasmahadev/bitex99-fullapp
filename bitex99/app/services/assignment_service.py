@@ -87,7 +87,7 @@ class AssignmentService:
             "order_id": str(assignment.order_id),
             "status": assignment.status.value if hasattr(assignment.status, "value") else str(assignment.status),
             "distance_km": float(assignment.distance_km) if assignment.distance_km else None,
-            "expires_in_seconds": 45,
+            "expires_in_seconds": 200,
             "delivery_otp": otp.otp if otp else None,
             "order": order_payload,
         }
@@ -100,11 +100,49 @@ class AssignmentService:
     ) -> None:
         try:
             from app.main import manager
-            payload = await self.assignment_offer_payload(assignment_id, db)
-            if payload:
-                await manager.send_to_partner(str(partner_id), {
+            assignment = await db.scalar(
+                select(DeliveryAssignment).where(DeliveryAssignment.id == assignment_id)
+            )
+            if not assignment:
+                return
+            order = await db.scalar(
+                select(Order)
+                .options(selectinload(Order.items), selectinload(Order.restaurant))
+                .where(Order.id == assignment.order_id)
+            )
+            if not order:
+                return
+            restaurant = order.restaurant
+            order_items = list(order.items or [])
+            partner_ws = manager.partner_order_connections.get(str(partner_id))
+            if partner_ws:
+                await partner_ws.send_json({
                     "event": "NEW_ORDER",
-                    "assignment": payload,
+                    "assignment_id": str(assignment.id),
+                    "expires_in_seconds": 200,
+                    "order": {
+                        "id": str(order.id),
+                        "order_id": str(order.id),
+                        "restaurant_id": str(order.restaurant_id),
+                        "status": order.status.value if hasattr(order.status, "value") else str(order.status),
+                        "restaurant_name": restaurant.name if restaurant else "",
+                        "restaurant_address": restaurant.full_address if restaurant else "",
+                        "restaurant_lat": float(restaurant.latitude) if restaurant and restaurant.latitude is not None else 0,
+                        "restaurant_lng": float(restaurant.longitude) if restaurant and restaurant.longitude is not None else 0,
+                        "restaurant_latitude": float(restaurant.latitude) if restaurant and restaurant.latitude is not None else 0,
+                        "restaurant_longitude": float(restaurant.longitude) if restaurant and restaurant.longitude is not None else 0,
+                        "customer_address": assignment.customer_address,
+                        "customer_lat": float(assignment.customer_latitude or 0),
+                        "customer_lng": float(assignment.customer_longitude or 0),
+                        "customer_latitude": float(assignment.customer_latitude or 0),
+                        "customer_longitude": float(assignment.customer_longitude or 0),
+                        "items_summary": ", ".join(
+                            f"{i.name} x{i.quantity}" for i in order_items
+                        ),
+                        "total_amount": float(order.total_amount),
+                        "estimated_earnings": float((assignment.distance_km or 0) * 6 + 20),
+                        "distance_km": float(assignment.distance_km or 0),
+                    },
                 })
         except Exception as e:
             logger.warning("Failed to notify partner about assignment: %s", e)
@@ -184,7 +222,7 @@ class AssignmentService:
             restaurant_lng=rest_lng,
             city=restaurant.city,
             db=db,
-            limit=10,
+            limit=5,
             rejected_ids=rejected_ids if rejected_ids else None,
         )
 
@@ -233,10 +271,10 @@ class AssignmentService:
         await db.commit()
         await db.refresh(assignment)
 
-        # Step 10: Store pending key in Redis (45s TTL)
+        # Step 10: Store pending key in Redis (200s TTL)
         await self._redis.setex(
             f"assignment_pending:{nearest.id}",
-            45,
+            200,
             str(assignment.id),
         )
 
@@ -278,8 +316,8 @@ class AssignmentService:
         order_id: uuid.UUID,
         remaining_partners: list[PartnerWithDistance],
     ) -> None:
-        """After 45 seconds, time out the assignment if not accepted."""
-        await asyncio.sleep(45)
+        """After 200 seconds, time out the assignment if not accepted."""
+        await asyncio.sleep(200)
 
         async with AsyncSessionLocal() as db:
             try:
@@ -355,7 +393,7 @@ class AssignmentService:
         pending = await self._redis.get(f"assignment_pending:{partner.id}")
         if not pending:
             return {
-                "error": "Assignment window has expired (45 seconds)",
+                "error": "Assignment window has expired (200 seconds)",
                 "error_code": "ASSIGNMENT_EXPIRED",
                 "status_code": 409,
             }

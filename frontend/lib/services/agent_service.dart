@@ -33,10 +33,10 @@ class AgentService {
     double? latitude,
     double? longitude,
   }) async {
-    final path = isOnline ? '/partner/duty/start' : '/partner/duty/stop';
-    await _dio.post(
-      path,
+    await _dio.put(
+      '/agents/$agentId/online-status',
       data: {
+        'isOnline': isOnline,
         if (latitude != null) 'latitude': latitude,
         if (longitude != null) 'longitude': longitude,
       },
