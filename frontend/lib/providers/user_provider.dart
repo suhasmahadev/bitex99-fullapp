@@ -1,4 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import '../core/token_storage.dart';
+import '../services/ws_service.dart';
 
 /// Enum for the three user roles in the app.
 enum UserRole { customer, restaurantPartner, deliveryAgent }
@@ -103,6 +108,8 @@ class UserProvider extends ChangeNotifier {
   }
 
   void logout() {
+    unawaited(WsService().disconnectAll());
+    unawaited(TokenStorage.clearAll());
     _uid = '';
     _name = '';
     _phone = '';

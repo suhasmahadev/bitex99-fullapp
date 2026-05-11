@@ -44,7 +44,10 @@ class AgentService {
   }
 
   Future<Map<String, dynamic>> getSurgeStatus() async {
-    final response = await _dio.get('/admin/surge/status');
+    final response = await Dio(BaseOptions(baseUrl: ApiConstants.apiBase)).get(
+      '/surge/status',
+      queryParameters: {'city': 'KR Nagar'},
+    );
     final data = response.data;
     if (data is Map<String, dynamic> && data['data'] is Map) {
       return Map<String, dynamic>.from(data['data'] as Map);

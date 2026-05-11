@@ -6,6 +6,7 @@ import '../core/api_constants.dart';
 import '../core/app_exceptions.dart';
 import '../core/token_storage.dart';
 import '../models/models.dart';
+import 'ws_service.dart';
 
 /// Replaces FirebaseAuth completely.
 /// All OTP operations now hit the FastAPI backend.
@@ -49,12 +50,14 @@ class AuthService {
         },
       );
       final data = response.data;
+      final refreshToken = (data['refreshToken'] ?? data['refresh_token'] ?? '').toString();
 
       // Persist credentials securely
       await TokenStorage.saveToken(data['token']);
-      await TokenStorage.saveRefreshToken(data['refreshToken']);
+      await TokenStorage.saveRefreshToken(refreshToken);
       await TokenStorage.saveRole(data['user']['role']);
       await TokenStorage.saveUser(jsonEncode(data['user']));
+      await WsService().initForRole(data['user']['role']?.toString() ?? '');
 
       return UserModel.fromJson(data['user']);
     } on DioException catch (e) {
@@ -68,6 +71,7 @@ class AuthService {
     try {
       await _dio.post(ApiConstants.logout);
     } catch (_) {}
+    await WsService().disconnectAll();
     await TokenStorage.clearAll();
   }
 

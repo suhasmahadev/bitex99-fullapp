@@ -18,7 +18,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import get_settings
 from app.database import get_db
-from app.dependencies import get_current_user, redis_dep
+from app.dependencies import get_current_user, redis_dep, require_restaurant_partner
 from app.models.address import Address, AddressLabel
 from app.models.cart import CartItem
 from app.models.delivery_assignment import AssignmentStatus, DeliveryAssignment
@@ -297,6 +297,14 @@ def _enum_value(value: Any) -> str:
 
 def _dt(value: Any) -> str | None:
     return value.isoformat() if value else None
+
+
+def _redis_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        return value.decode()
+    return str(value)
 
 
 def _local_ip() -> str:
@@ -1075,6 +1083,68 @@ async def update_order_status(
     return await _order_flutter(db, order)
 
 
+@router.post("/restaurant/orders/{order_id}/accept")
+async def flutter_accept_order(
+    order_id: uuid.UUID,
+    body: dict[str, Any],
+    partner: RestaurantPartner = Depends(require_restaurant_partner),
+    db: AsyncSession = Depends(get_db),
+    redis=Depends(redis_dep),
+) -> dict:
+    prep_time = int(body.get("preparation_time") or body.get("preparationTime") or 20)
+    result = await OrderManagementService(db).accept_order(
+        order_id,
+        partner.restaurant_id,
+        prep_time,
+        redis,
+    )
+    order = await _load_order(db, _as_uuid(result["id"]))
+    return await _order_flutter(db, order)
+
+
+@router.post("/restaurant/orders/{order_id}/preparing")
+async def flutter_mark_order_preparing(
+    order_id: uuid.UUID,
+    body: dict[str, Any] | None = None,
+    partner: RestaurantPartner = Depends(require_restaurant_partner),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    result = await OrderManagementService(db).mark_preparing(order_id, partner.restaurant_id)
+    order = await _load_order(db, _as_uuid(result["id"]))
+    return await _order_flutter(db, order)
+
+
+@router.post("/restaurant/orders/{order_id}/ready")
+async def flutter_mark_order_ready(
+    order_id: uuid.UUID,
+    body: dict[str, Any] | None = None,
+    partner: RestaurantPartner = Depends(require_restaurant_partner),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    result = await OrderManagementService(db).mark_ready(order_id, partner.restaurant_id)
+    order = await _load_order(db, _as_uuid(result["id"]))
+    return await _order_flutter(db, order)
+
+
+@router.post("/restaurant/orders/{order_id}/reject")
+async def flutter_reject_order(
+    order_id: uuid.UUID,
+    body: dict[str, Any],
+    partner: RestaurantPartner = Depends(require_restaurant_partner),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    reason = str(body.get("reason") or body.get("rejectionReason") or "Rejected")
+    description = str(body.get("description") or "")
+    result = await OrderManagementService(db).reject_order(
+        order_id,
+        partner.restaurant_id,
+        reason,
+        description,
+    )
+    order = await _load_order(db, _as_uuid(result["id"]))
+    return await _order_flutter(db, order)
+
+
 @router.put("/orders/{order_id}/agent")
 async def accept_order_agent(
     order_id: str,
@@ -1497,6 +1567,29 @@ async def flutter_get_surge_status(
     redis_client=Depends(redis_dep)
 ) -> dict:
     return await get_surge_status(admin=admin, db=db, redis_client=redis_client)
+
+
+@router.get("/surge/status")
+async def get_surge_status_public(
+    city: str = "KR Nagar",
+    redis_client=Depends(redis_dep),
+) -> dict:
+    manual = await redis_client.get(f"surge:MANUAL:{city}")
+    auto = _redis_text(await redis_client.get(f"surge:AUTO:{city}"))
+    rain = await redis_client.get(f"surge:RAIN:{city}")
+
+    auto_pay = {"MILD": 10, "MEDIUM": 20, "HIGH": 30}.get(auto, 0)
+    rain_pay = 20 if rain else 0
+    manual_pay = 10 if manual else 0
+    total = max(auto_pay, manual_pay) + rain_pay
+
+    return {
+        "city": city,
+        "surge_active": total > 0,
+        "total_bonus": total,
+        "rain_active": bool(rain),
+        "auto_level": auto or "NONE",
+    }
 
 
 @router.post("/admin/surge/rain/enable")

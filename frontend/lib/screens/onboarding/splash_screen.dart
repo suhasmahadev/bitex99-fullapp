@@ -14,6 +14,7 @@ import '../../providers/orders_provider.dart';
 import '../../providers/restaurants_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../providers/user_provider.dart';
+import '../../services/ws_service.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -65,6 +66,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       context.go('/login');
       return;
     }
+    await WsService().initForRole(user.role);
     final legacyRole = _legacyRoleFor(user.role);
     if (legacyRole != null) {
       context.read<UserProvider>().login(

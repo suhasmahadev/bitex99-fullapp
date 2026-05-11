@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
-
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // SETUP REQUIRED BEFORE RUNNING ON REAL DEVICE:
 // 1. Connect phone and laptop to same WiFi network
@@ -25,11 +23,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 ///
 class ApiConstants {
   // ── Real-device override (only used for non-web, non-emulator) ──────────
-  static const String _deviceIP = '10.0.2.2';
+  static const String baseIP = '10.156.203.215';
   static const String basePort = '8000';
-
-  // ── Auto-detect: web uses localhost, mobile uses _deviceIP ──────────────
-  static String get baseIP => kIsWeb ? 'localhost' : _deviceIP;
 
   // ── Derived base URLs ────────────────────────────────────────────────────
   static String get apiBase => 'http://$baseIP:$basePort/api/flutter/v1';

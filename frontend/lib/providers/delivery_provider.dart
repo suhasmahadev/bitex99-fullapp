@@ -9,6 +9,7 @@ import '../services/agent_service.dart';
 import '../services/order_service.dart';
 import '../services/upload_service.dart';
 import '../services/ws_service.dart';
+import '../core/token_storage.dart';
 import '../models/models.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -148,6 +149,8 @@ class DeliveryProvider extends ChangeNotifier {
 
   Future<void> _loadSurgeStatus() async {
     try {
+      final role = await TokenStorage.getRole();
+      if (role != 'agent' && role != 'DELIVERY_PARTNER') return;
       _surgeStatus = await AgentService().getSurgeStatus();
       notifyListeners();
     } catch (_) {}

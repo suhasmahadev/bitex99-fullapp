@@ -259,42 +259,41 @@ app.state.connection_manager = manager
 async def partner_location_ws(websocket: WebSocket, token: str = Query(...)):
     from app.services import location_service
     from app.database import AsyncSessionLocal
-    import redis.asyncio as aioredis
     from app.redis_client import get_redis
-    
+
+    await websocket.accept()
+    partner_id = None
+
     try:
         payload = verify_access_token(token)
-        if payload.get("role") not in ["DELIVERY_PARTNER", "ADMIN"]:
-            await websocket.accept()
+        role = payload.get("role", "")
+        partner_id = payload.get("partner_id")
+
+        if role != "DELIVERY_PARTNER":
+            await websocket.send_json({"event": "ERROR", "code": 4003, "message": f"Wrong role:{role}"})
             await websocket.close(code=4003, reason="Wrong role")
             return
-    except:
-        await websocket.accept()
+
+        if not partner_id:
+            await websocket.send_json({"event": "ERROR", "code": 4003, "message": "No partner on account"})
+            await websocket.close(code=4003, reason="No partner on account")
+            return
+    except Exception:
+        await websocket.send_json({"event": "ERROR", "code": 4001, "message": "Invalid token"})
         await websocket.close(code=4001, reason="Invalid token")
         return
-        
-    partner_id = payload.get("partner_id")
-    if payload.get("role") == "ADMIN" and not partner_id:
-        await websocket.accept()
-        await websocket.send_json({"event": "CONNECTED", "message": "Admin location observer connected"})
-        try:
-            while True:
-                await asyncio.sleep(30)
-                await websocket.send_json({"event": "PING"})
-        except (WebSocketDisconnect, asyncio.CancelledError):
-            return
     
     async with AsyncSessionLocal() as db:
         from app.models.delivery_partner import DeliveryPartner
         from sqlalchemy import select
         partner = await db.scalar(select(DeliveryPartner).where(DeliveryPartner.id == partner_id))
         if not partner or not partner.is_online:
-            await websocket.accept()
+            await websocket.send_json({"event": "ERROR", "code": 4003, "message": "Partner offline"})
             await websocket.close(code=4001, reason="Partner offline")
             return
-            
-    await websocket.accept()
-    manager.partner_location_connections[partner_id] = websocket
+
+    partner_key = str(partner_id)
+    manager.partner_location_connections[partner_key] = websocket
     await websocket.send_json({"event": "CONNECTED", "message": "Location tracking active"})
     
     redis = get_redis()
@@ -319,39 +318,43 @@ async def partner_location_ws(websocket: WebSocket, token: str = Query(...)):
                 "timestamp": datetime.now(UTC).isoformat()
             })
     except (WebSocketDisconnect, asyncio.CancelledError):
-        manager.partner_location_connections.pop(partner_id, None)
+        pass
+    except Exception as e:
+        logger.error("Partner location WS error for %s: %s", partner_id, e, exc_info=True)
+    finally:
+        if partner_id:
+            manager.partner_location_connections.pop(str(partner_id), None)
 
 
 @app.websocket("/api/v1/ws/partner/orders")
 async def partner_orders_ws(websocket: WebSocket, token: str = Query(...)):
     from app.redis_client import get_redis
-    import asyncio
-    
+
+    await websocket.accept()
+    partner_id = None
+
     try:
         payload = verify_access_token(token)
-        if payload.get("role") not in ["DELIVERY_PARTNER", "ADMIN"]:
-            await websocket.accept()
+        role = payload.get("role", "")
+        partner_id = payload.get("partner_id")
+
+        if role != "DELIVERY_PARTNER":
+            await websocket.send_json({"event": "ERROR", "code": 4003, "message": f"Wrong role:{role}"})
             await websocket.close(code=4003, reason="Wrong role")
             return
-    except:
-        await websocket.accept()
+
+        if not partner_id:
+            await websocket.send_json({"event": "ERROR", "code": 4003, "message": "No partner on account"})
+            await websocket.close(code=4003, reason="No partner on account")
+            return
+    except Exception:
+        await websocket.send_json({"event": "ERROR", "code": 4001, "message": "Invalid token"})
         await websocket.close(code=4001, reason="Invalid token")
         return
-        
-    partner_id = payload.get("partner_id")
-    if payload.get("role") == "ADMIN" and not partner_id:
-        await websocket.accept()
-        await websocket.send_json({"event": "CONNECTED", "message": "Admin partner-order observer connected"})
-        try:
-            while True:
-                await asyncio.sleep(30)
-                await websocket.send_json({"event": "PING"})
-        except (WebSocketDisconnect, asyncio.CancelledError):
-            return
 
     partner_key = str(partner_id)
-    await websocket.accept()
     manager.partner_order_connections[partner_key] = websocket
+    await websocket.send_json({"event": "CONNECTED"})
     
     redis = get_redis()
     val = await redis.get(f"assignment_pending:{partner_key}")
@@ -374,53 +377,52 @@ async def partner_orders_ws(websocket: WebSocket, token: str = Query(...)):
         
     try:
         while True:
-            await asyncio.sleep(30)
-            await websocket.send_json({"event": "PING"})
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=30)
+            except asyncio.TimeoutError:
+                await websocket.send_json({"event": "PING"})
+            except WebSocketDisconnect:
+                break
     except (WebSocketDisconnect, asyncio.CancelledError):
-        manager.partner_order_connections.pop(partner_key, None)
+        pass
+    except Exception as e:
+        logger.error("Partner orders WS error for %s: %s", partner_id, e, exc_info=True)
+    finally:
+        if partner_id:
+            manager.partner_order_connections.pop(str(partner_id), None)
 
 
 @app.websocket("/api/v1/ws/restaurant/orders")
 async def restaurant_orders_ws(websocket: WebSocket, token: str = Query(...)):
     """Restaurant real-time order feed."""
     import json as _json
+    import uuid as _uuid
     from app.redis_client import get_redis
 
     await websocket.accept()
+    restaurant_id = None
 
     try:
         payload = verify_access_token(token)
+        role = payload.get("role", "")
+        restaurant_id = payload.get("restaurant_id")
     except Exception:
         await websocket.send_json({"event": "ERROR", "code": 4001, "message": "Invalid token"})
         await websocket.close(code=4001, reason="Invalid token")
         return
-
-    role = payload.get("role")
-    restaurant_id = payload.get("restaurant_id")
 
     logger.info(
         "Restaurant WS: role=%s restaurant_id=%s user=%s",
         role, restaurant_id, payload.get("sub"),
     )
 
-    if role == "ADMIN":
-        manager.restaurant_connections[f"admin:{payload.get('sub', id(websocket))}"] = websocket
-        await websocket.send_json({"event": "CONNECTED", "message": "Admin restaurant-order observer connected"})
-        try:
-            while True:
-                await asyncio.sleep(30)
-                await websocket.send_json({"event": "PING"})
-        except (WebSocketDisconnect, asyncio.CancelledError):
-            manager.restaurant_connections.pop(f"admin:{payload.get('sub', id(websocket))}", None)
-        return
-
     if role != "RESTAURANT_PARTNER":
-        await websocket.send_json({"event": "ERROR", "code": 4003, "message": f"Wrong role: {role}"})
+        await websocket.send_json({"event": "ERROR", "code": 4003, "message": f"Wrong role:{role}"})
         await websocket.close(code=4003, reason="Wrong role")
         return
 
     if not restaurant_id or restaurant_id == "None":
-        await websocket.send_json({"event": "ERROR", "code": 4003, "message": "No restaurant_id in token"})
+        await websocket.send_json({"event": "ERROR", "code": 4003, "message": "No restaurant on account"})
         await websocket.close(code=4003, reason="No restaurant associated with account")
         return
 
@@ -428,6 +430,7 @@ async def restaurant_orders_ws(websocket: WebSocket, token: str = Query(...)):
 
     try:
         manager.restaurant_connections[str(restaurant_id)] = websocket
+        await websocket.send_json({"event": "CONNECTED"})
 
         redis = get_redis()
 
@@ -446,14 +449,18 @@ async def restaurant_orders_ws(websocket: WebSocket, token: str = Query(...)):
         async with AsyncSessionLocal() as db:
             from app.services.order_management_service import OrderManagementService
             svc = OrderManagementService(db)
-            live = await svc.get_live_orders(uuid.UUID(restaurant_id))
+            live = await svc.get_live_orders(_uuid.UUID(str(restaurant_id)))
             if live.get("placed"):
                 await websocket.send_json({"event": "PENDING_ORDERS", "orders": live["placed"]})
 
         # Keep-alive ping loop
         while True:
-            await asyncio.sleep(30)
-            await websocket.send_json({"event": "PING"})
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=30)
+            except asyncio.TimeoutError:
+                await websocket.send_json({"event": "PING"})
+            except WebSocketDisconnect:
+                break
     except (WebSocketDisconnect, asyncio.CancelledError):
         pass
     except Exception as e:
@@ -470,53 +477,63 @@ async def customer_order_ws(websocket: WebSocket, order_id: str, token: str = Qu
     from sqlalchemy import select
     import uuid as _uuid
 
+    await websocket.accept()
+    user_id = None
+
     try:
         payload = verify_access_token(token)
-        if payload.get("role") not in ["CUSTOMER", "ADMIN"]:
-            await websocket.accept()
+        role = payload.get("role", "")
+        if role != "CUSTOMER":
+            await websocket.send_json({"event": "ERROR", "code": 4003, "message": f"Wrong role:{role}"})
             await websocket.close(code=4003, reason="Wrong role")
             return
     except Exception:
-        await websocket.accept()
+        await websocket.send_json({"event": "ERROR", "code": 4001, "message": "Invalid token"})
         await websocket.close(code=4001, reason="Invalid token")
         return
 
     try:
         oid = _uuid.UUID(str(order_id))
     except (TypeError, ValueError):
-        await websocket.accept()
+        await websocket.send_json({"event": "ERROR", "code": 4003, "message": "Invalid order ID"})
         await websocket.close(code=4003, reason="Invalid order ID")
         return
 
     async with AsyncSessionLocal() as db:
         order = await db.scalar(select(Order).where(Order.id == oid))
         if not order:
-            await websocket.accept()
+            await websocket.send_json({"event": "ERROR", "code": 4004, "message": "Order not found"})
             await websocket.close(code=4004, reason="Order not found")
             return
         user_id = str(order.user_id)
-        if payload.get("role") == "CUSTOMER" and payload.get("sub") != user_id:
-            await websocket.accept()
+        if payload.get("sub") != user_id:
+            await websocket.send_json({"event": "ERROR", "code": 4003, "message": "Not your order"})
             await websocket.close(code=4003, reason="Not your order")
             return
 
-    await websocket.accept()
-    if payload.get("role") == "CUSTOMER":
-        manager.user_connections[user_id] = websocket
+    manager.user_connections[user_id] = websocket
     await websocket.send_json({"event": "CONNECTED", "order_id": str(oid)})
 
     try:
         while True:
-            await asyncio.sleep(30)
-            await websocket.send_json({"event": "PING"})
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=30)
+            except asyncio.TimeoutError:
+                await websocket.send_json({"event": "PING"})
+            except WebSocketDisconnect:
+                break
     except (WebSocketDisconnect, asyncio.CancelledError):
-        if payload.get("role") == "CUSTOMER":
+        pass
+    except Exception as e:
+        logger.error("Customer order WS error for %s: %s", order_id, e, exc_info=True)
+    finally:
+        if user_id:
             manager.user_connections.pop(user_id, None)
 # ── Health ────────────────────────────────────────────────────────────────────
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from fastapi import Depends
-from app.database import get_db
+from app.database import AsyncSessionLocal, get_db
 from app.redis_client import get_redis
 import redis.asyncio as aioredis
 

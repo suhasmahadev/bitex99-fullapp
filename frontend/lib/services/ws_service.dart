@@ -15,6 +15,7 @@ import 'package:flutter/foundation.dart' show debugPrint;
 class WsService with WidgetsBindingObserver {
   WsService._();
   static final WsService instance = WsService._();
+  factory WsService() => instance;
 
   final _customerOrderController = StreamController<OrderModel>.broadcast();
   final _restaurantOrderController = StreamController<Map<String, dynamic>>.broadcast();
@@ -46,22 +47,73 @@ class WsService with WidgetsBindingObserver {
   bool _locationWanted = false;
 
   bool _permanentlyStopped = false;
+  bool _restaurantStopped = false;
+  bool _partnerStopped = false;
+  bool _customerStopped = false;
+
+  Future<void> initForRole(String role) async {
+    await disconnectAll();
+    _permanentlyStopped = false;
+    _restaurantStopped = false;
+    _partnerStopped = false;
+    _customerStopped = false;
+
+    switch (_backendRole(role)) {
+      case 'RESTAURANT_PARTNER':
+        await connectRestaurantOrders();
+        break;
+      case 'DELIVERY_PARTNER':
+        await connectPartnerOrders();
+        break;
+      case 'CUSTOMER':
+      case 'ADMIN':
+      default:
+        break;
+    }
+  }
+
+  Future<void> disconnectAll() async {
+    _customerOrderId = null;
+    _restaurantWanted = false;
+    _partnerWanted = false;
+    _locationWanted = false;
+    _customerReconnect?.cancel();
+    _restaurantReconnect?.cancel();
+    _partnerReconnect?.cancel();
+    _locationReconnect?.cancel();
+    await _customerSub?.cancel();
+    await _restaurantSub?.cancel();
+    await _partnerSub?.cancel();
+    await _positionSub?.cancel();
+    await _customerChannel?.sink.close(1000);
+    await _restaurantChannel?.sink.close(1000);
+    await _partnerChannel?.sink.close(1000);
+    await _locationChannel?.sink.close(1000);
+    _customerChannel = null;
+    _restaurantChannel = null;
+    _partnerChannel = null;
+    _locationChannel = null;
+  }
 
   Future<void> connectCustomerOrder(String orderId) async {
-    if (!await _hasRole({'customer', 'CUSTOMER'})) {
+    if (!await _hasRole({'CUSTOMER'})) {
       disconnectCustomerOrder();
       return;
     }
+    _customerStopped = false;
+    _permanentlyStopped = false;
     _customerOrderId = orderId;
     await _connectCustomer();
     _ensureLifecycle();
   }
 
   Future<void> connectRestaurantOrders() async {
-    if (!await _hasRole({'restaurant', 'RESTAURANT_PARTNER'})) {
+    if (!await _hasRole({'RESTAURANT_PARTNER'})) {
       disconnectRestaurantOrders();
       return;
     }
+    _restaurantStopped = false;
+    _permanentlyStopped = false;
     disconnectPartnerOrders();
     disconnectCustomerOrder();
     _restaurantWanted = true;
@@ -70,10 +122,12 @@ class WsService with WidgetsBindingObserver {
   }
 
   Future<void> connectPartnerOrders() async {
-    if (!await _hasRole({'agent', 'DELIVERY_PARTNER'})) {
+    if (!await _hasRole({'DELIVERY_PARTNER'})) {
       disconnectPartnerOrders();
       return;
     }
+    _partnerStopped = false;
+    _permanentlyStopped = false;
     disconnectRestaurantOrders();
     disconnectCustomerOrder();
     _partnerWanted = true;
@@ -82,7 +136,7 @@ class WsService with WidgetsBindingObserver {
   }
 
   Future<void> connectPartnerLocation() async {
-    if (!await _hasRole({'agent', 'DELIVERY_PARTNER'})) {
+    if (!await _hasRole({'DELIVERY_PARTNER'})) {
       disconnectPartnerLocation();
       return;
     }
@@ -125,6 +179,7 @@ class WsService with WidgetsBindingObserver {
   }
 
   Future<void> _connectCustomer() async {
+    if (_customerStopped) return;
     final orderId = _customerOrderId;
     if (orderId == null || orderId.isEmpty) return;
     await _customerSub?.cancel();
@@ -143,12 +198,13 @@ class WsService with WidgetsBindingObserver {
   }
 
   Future<void> _connectRestaurant() async {
-    if (!_restaurantWanted) return;
+    if (!_restaurantWanted || _restaurantStopped) return;
     final role = await TokenStorage.getRole();
     debugPrint('WS: _connectRestaurant called (role=$role)');
-    if (role != 'restaurant' && role != 'RESTAURANT_PARTNER') {
+    if (_backendRole(role) != 'RESTAURANT_PARTNER') {
       debugPrint('WS skip: wrong role $role for restaurant channel');
       _restaurantWanted = false;
+      _restaurantStopped = true;
       return;
     }
     await _restaurantSub?.cancel();
@@ -173,12 +229,13 @@ class WsService with WidgetsBindingObserver {
   }
 
   Future<void> _connectPartner() async {
-    if (!_partnerWanted) return;
+    if (!_partnerWanted || _partnerStopped) return;
     final role = await TokenStorage.getRole();
     debugPrint('WS: _connectPartner called (role=$role)');
-    if (role != 'agent' && role != 'DELIVERY_PARTNER') {
+    if (_backendRole(role) != 'DELIVERY_PARTNER') {
       debugPrint('WS skip: wrong role $role for partner channel');
       _partnerWanted = false;
+      _partnerStopped = true;
       return;
     }
     await _partnerSub?.cancel();
@@ -225,7 +282,22 @@ class WsService with WidgetsBindingObserver {
 
   Future<bool> _hasRole(Set<String> roles) async {
     final role = await TokenStorage.getRole();
-    return role != null && roles.contains(role);
+    return role != null && roles.contains(_backendRole(role));
+  }
+
+  String _backendRole(String? role) {
+    switch (role) {
+      case 'restaurant':
+        return 'RESTAURANT_PARTNER';
+      case 'agent':
+        return 'DELIVERY_PARTNER';
+      case 'customer':
+        return 'CUSTOMER';
+      case 'admin':
+        return 'ADMIN';
+      default:
+        return role ?? '';
+    }
   }
 
   /// Returns false for close codes that mean "stop retrying".
@@ -323,19 +395,19 @@ class WsService with WidgetsBindingObserver {
 
   void _scheduleCustomerReconnect() {
     _customerReconnect?.cancel();
-    if (_customerOrderId == null) return;
+    if (_customerOrderId == null || _customerStopped) return;
     _customerReconnect = Timer(const Duration(seconds: 3), _connectCustomer);
   }
 
   void _scheduleRestaurantReconnect() {
-    if (_permanentlyStopped) return;
+    if (_permanentlyStopped || _restaurantStopped) return;
     _restaurantReconnect?.cancel();
     if (!_restaurantWanted) return;
     _restaurantReconnect = Timer(const Duration(seconds: 3), _connectRestaurant);
   }
 
   void _schedulePartnerReconnect() {
-    if (_permanentlyStopped) return;
+    if (_permanentlyStopped || _partnerStopped) return;
     _partnerReconnect?.cancel();
     if (!_partnerWanted) return;
     _partnerReconnect = Timer(const Duration(seconds: 3), _connectPartner);

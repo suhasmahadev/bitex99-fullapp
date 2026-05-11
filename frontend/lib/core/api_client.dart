@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 import 'api_constants.dart';
-import 'app_exceptions.dart';
 import 'token_storage.dart';
 
 /// Singleton Dio client with auth interceptor.
@@ -18,21 +18,29 @@ class ApiClient {
     if (_initialized) return;
     _dio = Dio(BaseOptions(
       baseUrl: ApiConstants.apiBase,
-      connectTimeout: const Duration(seconds: 10),
+      connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 30),
       headers: {'Content-Type': 'application/json'},
     ));
+    debugPrint('API connecting to: ${ApiConstants.baseIP}:${ApiConstants.basePort}');
 
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
-        final token = await TokenStorage.getToken();
-        if (token != null && token.isNotEmpty) {
-          options.headers['Authorization'] = 'Bearer $token';
+        try {
+          final token = await TokenStorage.getToken();
+          if (token != null && token.isNotEmpty) {
+            options.headers['Authorization'] = 'Bearer $token';
+          }
+        } catch (e) {
+          debugPrint('Token read error: $e');
         }
         return handler.next(options);
       },
       onError: (error, handler) async {
-        if (error.response?.statusCode == 401) {
+        final status = error.response?.statusCode;
+        debugPrint('API Error: $status ${error.requestOptions.path}');
+
+        if (status == 401) {
           // Try refresh token once
           final refreshed = await _tryRefreshToken();
           if (refreshed) {
@@ -43,19 +51,16 @@ class ApiClient {
               final response = await _dio.fetch(error.requestOptions);
               return handler.resolve(response);
             } catch (_) {}
-          } else {
-            // Refresh failed -> clear storage
-            await TokenStorage.clearAll();
-            return handler.reject(error);
           }
+          // Refresh failed -> clear storage
+          await TokenStorage.clearAll();
+          return handler.reject(error);
         }
         // Only show NetworkException for actual connection errors
         if (error.type == DioExceptionType.connectionError ||
-            error.type == DioExceptionType.connectionTimeout) {
-          return handler.reject(DioException(
-            requestOptions: error.requestOptions,
-            error: NetworkException(),
-          ));
+            error.type == DioExceptionType.connectionTimeout ||
+            error.type == DioExceptionType.receiveTimeout) {
+          debugPrint('REAL network error: ${error.type}');
         }
         return handler.next(error);
       },
@@ -64,13 +69,14 @@ class ApiClient {
   }
 
   Future<bool> _tryRefreshToken() async {
+    if (_refreshing) return false;
+    _refreshing = true;
     try {
-      final token = await TokenStorage.getToken();
-      if (token == null) return false;
+      final refresh = await TokenStorage.getRefreshToken();
+      if (refresh == null || refresh.isEmpty) return false;
       final response = await Dio(BaseOptions(baseUrl: ApiConstants.apiBase)).post(
         ApiConstants.refresh,
-        data: {'refresh_token': await TokenStorage.getRefreshToken()},
-        options: Options(headers: {'Authorization': 'Bearer $token'})
+        data: {'refresh_token': refresh},
       );
       final newToken = response.data['access_token'] ?? response.data['token'];
       final newRefresh = response.data['refresh_token'] ?? response.data['refreshToken'];
@@ -78,8 +84,11 @@ class ApiClient {
       await TokenStorage.saveToken(newToken);
       await TokenStorage.saveRefreshToken(newRefresh);
       return true;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Refresh failed: $e');
       return false;
+    } finally {
+      _refreshing = false;
     }
   }
 
