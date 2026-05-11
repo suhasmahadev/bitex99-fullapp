@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BiteX99 Admin Panel</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090d12;
+      --panel: #111821;
+      --panel-2: #17212c;
+      --line: #263544;
+      --text: #edf3f8;
+      --muted: #9aacba;
+      --accent: #30d68a;
+      --danger: #ff5f6d;
+      --warn: #ffc857;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at 20% 0%, rgba(48, 214, 138, .16), transparent 30%), var(--bg);
+      color: var(--text);
+    }
+    button, input, textarea, select { font: inherit; }
+    button {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: var(--text);
+      background: var(--panel-2);
+      cursor: pointer;
+    }
+    button.primary { background: var(--accent); color: #06110c; border-color: var(--accent); font-weight: 800; }
+    button.danger { background: rgba(255, 95, 109, .12); border-color: rgba(255, 95, 109, .5); color: #ffd3d7; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #0c1219;
+      color: var(--text);
+    }
+    textarea { min-height: 84px; resize: vertical; }
+    a { color: var(--accent); text-decoration: none; }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 18px 48px; }
+    .login {
+      width: min(440px, calc(100vw - 32px));
+      margin: 12vh auto 0;
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(17, 24, 33, .92);
+    }
+    .brand { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+    .brand h1 { margin: 0; font-size: 24px; letter-spacing: 0; }
+    .field { display: grid; gap: 8px; margin: 14px 0; color: var(--muted); }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+    .msg { min-height: 24px; margin-top: 12px; color: var(--muted); }
+    .msg.err { color: #ffb8bf; }
+    .msg.ok { color: #9bf0c8; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+    header h1 { margin: 0; font-size: 24px; }
+    .tabs { display: flex; gap: 8px; overflow-x: auto; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+    .tab {
+      border: 0;
+      border-bottom: 3px solid transparent;
+      border-radius: 0;
+      background: transparent;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+    .section { display: none; }
+    .section.active { display: block; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; margin: 12px 0; gap: 12px; }
+    .grid { display: grid; gap: 14px; }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(17, 24, 33, .9);
+      padding: 18px;
+    }
+    .card.approved { border-color: rgba(48, 214, 138, .7); background: rgba(20, 58, 42, .48); }
+    .card.rejected { border-color: rgba(255, 95, 109, .65); }
+    .card h2 { margin: 0 0 8px; font-size: 20px; letter-spacing: 0; }
+    .meta { color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .docs { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; margin: 10px 0 14px; }
+    .doc {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0d141c;
+    }
+    .doc span { overflow-wrap: anywhere; }
+    .reject-form { display: none; grid-template-columns: minmax(180px, 260px) 1fr auto; gap: 10px; align-items: start; margin-top: 12px; }
+    .reject-form.open { display: grid; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+    .stat strong { display: block; margin-top: 12px; font-size: 28px; }
+    .quick { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 0 0 18px; }
+    .quick .card { padding: 12px 14px; }
+    .quick strong { display: block; margin-bottom: 4px; }
+    .progress { color: #9bf0c8; min-height: 24px; }
+    .viewer { position: fixed; inset: 0; display: none; place-items: center; background: rgba(0,0,0,.72); padding: 20px; z-index: 10; }
+    .viewer.open { display: grid; }
+    .viewer-box { width: min(560px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; }
+    .placeholder-img { display: grid; place-items: center; min-height: 260px; border: 1px dashed var(--line); border-radius: 8px; background: #0c1219; color: var(--muted); text-align: center; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { padding: 10px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 700; }
+    .empty { color: var(--muted); padding: 24px 0; }
+    @media (max-width: 720px) {
+      .reject-form { grid-template-columns: 1fr; }
+      header, .toolbar { align-items: stretch; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script>
+    const API = "/api/v1";
+    const AUTH_API = "/api/flutter/v1";
+    const ADMIN_PHONE = "+917676182964";
+    const tokenKey = "bitex_admin_token";
+    const app = document.getElementById("app");
+    const state = { tab: "kyc", token: localStorage.getItem(tokenKey) || "", user: null, pendingKyc: [], pendingRestaurants: [] };
+
+    const fmtDate = value => value ? new Date(value).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "N/A";
+    const money = value => Number(value || 0).toLocaleString("en-IN", { style: "currency", currency: "INR" });
+    const esc = value => String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+    const normalizePhone = value => {
+      const raw = String(value || "").trim().replace(/\s+/g, "");
+      if (raw.startsWith("+")) return raw;
+      const digits = raw.replace(/\D/g, "");
+      if (digits.length === 10) return `+91${digits}`;
+      if (digits.length === 12 && digits.startsWith("91")) return `+${digits}`;
+      return raw;
+    };
+
+    async function request(path, options = {}) {
+      const headers = { ...(options.headers || {}) };
+      if (state.token) headers.Authorization = `Bearer ${state.token}`;
+      if (options.body && !(options.body instanceof FormData)) headers["Content-Type"] = "application/json";
+      const res = await fetch(`${API}${path}`, { ...options, headers });
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : null;
+      if (!res.ok) throw new Error(data?.detail?.message || data?.detail || data?.message || `HTTP ${res.status}`);
+      return data;
+    }
+
+    async function authRequest(path, options = {}) {
+      const headers = { ...(options.headers || {}) };
+      if (options.body && !(options.body instanceof FormData)) headers["Content-Type"] = "application/json";
+      const res = await fetch(`${AUTH_API}${path}`, { ...options, headers });
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : null;
+      if (!res.ok) throw new Error(data?.detail?.message || data?.detail || data?.message || `HTTP ${res.status}`);
+      return data;
+    }
+
+    function renderLogin(message = "", isError = false) {
+      app.innerHTML = `
+        <section class="login">
+          <div class="brand"><h1>BiteX99 Admin Panel</h1><span>Control</span></div>
+          <label class="field">Name<input id="name" placeholder="Admin name" autocomplete="name"></label>
+          <label class="field">Phone<input id="phone" placeholder="7676182964" autocomplete="tel"></label>
+          <div class="actions"><button id="sendOtp">Send OTP</button></div>
+          <label class="field">OTP<input id="otp" placeholder="123456" inputmode="numeric" maxlength="6"></label>
+          <div class="actions"><button class="primary" id="verifyOtp">Verify OTP</button></div>
+          <div id="loginMsg" class="msg ${isError ? "err" : "ok"}">${esc(message)}</div>
+        </section>`;
+      document.getElementById("sendOtp").onclick = sendOtp;
+      document.getElementById("verifyOtp").onclick = verifyOtp;
+    }
+
+    async function sendOtp() {
+      const phoneInput = document.getElementById("phone");
+      const phone = normalizePhone(phoneInput.value);
+      phoneInput.value = phone;
+      if (phone !== ADMIN_PHONE) {
+        document.getElementById("loginMsg").className = "msg err";
+        document.getElementById("loginMsg").textContent = `Admin login is restricted to ${ADMIN_PHONE}`;
+        return;
+      }
+      try {
+        await authRequest("/auth/send-otp", { method: "POST", body: JSON.stringify({ phone }) });
+        document.getElementById("loginMsg").className = "msg ok";
+        document.getElementById("loginMsg").textContent = "OTP sent";
+      } catch (err) {
+        document.getElementById("loginMsg").className = "msg err";
+        document.getElementById("loginMsg").textContent = err.message;
+      }
+    }
+
+    async function verifyOtp() {
+      const phoneInput = document.getElementById("phone");
+      const phone = normalizePhone(phoneInput.value);
+      phoneInput.value = phone;
+      const name = document.getElementById("name").value.trim() || "Admin";
+      const otp = document.getElementById("otp").value.trim();
+      if (phone !== ADMIN_PHONE) {
+        renderLogin(`Admin login is restricted to ${ADMIN_PHONE}`, true);
+        return;
+      }
+      try {
+        const data = await authRequest("/auth/verify-otp", { method: "POST", body: JSON.stringify({ phone, otp, name, role: "admin" }) });
+        const role = String(data.user?.role || "").toUpperCase();
+        if (role !== "ADMIN") {
+          localStorage.removeItem(tokenKey);
+          state.token = "";
+          renderLogin("Access denied. Admin only.", true);
+          return;
+        }
+        state.token = data.token || data.access_token;
+        state.user = data.user;
+        localStorage.setItem(tokenKey, state.token);
+        renderDashboard();
+      } catch (err) {
+        renderLogin(err.message, true);
+      }
+    }
+
+    function dashboardShell() {
+      app.innerHTML = `
+        <div class="wrap">
+          <header>
+            <h1>BiteX99 Admin Panel</h1>
+            <button id="logout">Logout</button>
+          </header>
+          <div class="quick">
+            <div class="card"><strong>Admin phone</strong><span class="meta">set via psql</span></div>
+            <div class="card"><strong>Test Agent</strong><span class="meta">+919111111111</span></div>
+            <div class="card"><strong>Test Restaurant 1</strong><span class="meta">+919222222222 (KR Nagar)</span></div>
+            <div class="card"><strong>Test Restaurant 2</strong><span class="meta">+919333333333 (Hunsur)</span></div>
+          </div>
+          <nav class="tabs">
+            <button class="tab ${state.tab === "kyc" ? "active" : ""}" data-tab="kyc">Delivery Partner KYC</button>
+            <button class="tab ${state.tab === "restaurant" ? "active" : ""}" data-tab="restaurant">Restaurant Partner Docs</button>
+            <button class="tab ${state.tab === "overview" ? "active" : ""}" data-tab="overview">System Overview</button>
+          </nav>
+          <section id="kyc" class="section ${state.tab === "kyc" ? "active" : ""}"></section>
+          <section id="restaurant" class="section ${state.tab === "restaurant" ? "active" : ""}"></section>
+          <section id="overview" class="section ${state.tab === "overview" ? "active" : ""}"></section>
+          <div id="viewer" class="viewer" onclick="closeDocumentViewer()">
+            <div class="viewer-box" onclick="event.stopPropagation()">
+              <div id="viewerBody"></div>
+              <div class="actions"><button onclick="closeDocumentViewer()">Close</button></div>
+            </div>
+          </div>
+        </div>`;
+      document.getElementById("logout").onclick = () => {
+        localStorage.removeItem(tokenKey);
+        state.token = "";
+        renderLogin();
+      };
+      document.querySelectorAll(".tab").forEach(btn => btn.onclick = () => {
+        state.tab = btn.dataset.tab;
+        renderDashboard();
+      });
+    }
+
+    async function renderDashboard() {
+      dashboardShell();
+      if (state.tab === "kyc") await loadKyc();
+      if (state.tab === "restaurant") await loadRestaurants();
+      if (state.tab === "overview") await loadOverview();
+    }
+
+    function docsHtml(docs) {
+      if (!docs?.length) return `<div class="empty">No documents uploaded</div>`;
+      return `<div class="docs">${docs.map(doc => `
+        <div class="doc">
+          <span>✅ ${esc(doc.doc_type)}<br><small>${esc(doc.status || "")}</small></span>
+          ${doc.file_url ? `<button onclick="viewDocument('${esc(doc.file_url)}')">View</button>` : ""}
+        </div>`).join("")}</div>`;
+    }
+
+    function rejectForm(kind, id, docs) {
+      return `
+        <div class="reject-form" id="reject-${kind}-${id}">
+          <select>${(docs || []).map(doc => `<option value="${esc(doc.doc_type)}">${esc(doc.doc_type)}</option>`).join("")}</select>
+          <textarea placeholder="Reason"></textarea>
+          <button class="danger" onclick="confirmReject('${kind}', '${id}')">Confirm Reject</button>
+        </div>`;
+    }
+
+    async function loadKyc() {
+      const el = document.getElementById("kyc");
+      el.innerHTML = `<div class="toolbar"><h2>Delivery Partner KYC</h2><button onclick="loadKyc()">Refresh</button></div><div class="empty">Loading...</div>`;
+      try {
+        const [pending, approved] = await Promise.all([
+          request("/admin/kyc/pending"),
+          request("/admin/kyc/approved?limit=10")
+        ]);
+        state.pendingKyc = pending;
+        el.innerHTML = `<div class="toolbar"><h2>Delivery Partner KYC</h2><div class="actions"><button class="primary" onclick="approveAllKyc()">✓ Approve All Pending</button><button onclick="loadKyc()">Refresh</button></div></div>
+          <div id="kycProgress" class="progress"></div>
+          <div class="grid">${pending.length ? pending.map(partnerCard).join("") : `<div class="empty">No pending KYC submissions</div>`}</div>
+          <h2>Recently Approved</h2>
+          <div class="grid">${approved.length ? approved.map(p => `<div class="card">✅ ${esc(p.fe_id)} — ${esc(p.name || "Partner")} <span class="meta">Phone: ${esc(p.phone)} • City: ${esc(p.city || "N/A")}</span></div>`).join("") : `<div class="empty">No approved partners yet</div>`}</div>`;
+      } catch (err) {
+        el.innerHTML = `<div class="msg err">${esc(err.message)}</div>`;
+      }
+    }
+
+    function partnerCard(p) {
+      return `<article class="card" id="card-kyc-${p.partner_id}">
+        <h2>🛵 ${esc(p.fe_id || "Partner")} — ${esc(p.name || "Unnamed")}</h2>
+        <div class="meta">Phone: ${esc(p.phone)} • City: ${esc(p.city || "N/A")} • Submitted: ${fmtDate(p.submitted_at)} • Status: ${esc(p.status || "KYC_SUBMITTED")}</div>
+        <strong>DOCUMENTS:</strong>
+        ${docsHtml(p.documents)}
+        <div class="actions">
+          <button class="danger" onclick="toggleReject('kyc', '${p.partner_id}')">✗ Reject specific doc</button>
+          <button class="primary" onclick="approveKyc('${p.partner_id}')">✓ Approve All</button>
+        </div>
+        ${rejectForm("kyc", p.partner_id, p.documents)}
+      </article>`;
+    }
+
+    async function approveKyc(id) {
+      await request(`/admin/kyc/${id}/approve`, { method: "POST" });
+      const card = document.getElementById(`card-kyc-${id}`);
+      card.classList.add("approved");
+      card.insertAdjacentHTML("beforeend", `<div class="msg ok">✅ APPROVED</div>`);
+      setTimeout(loadKyc, 1000);
+    }
+
+    async function loadRestaurants() {
+      const el = document.getElementById("restaurant");
+      el.innerHTML = `<div class="toolbar"><h2>Restaurant Partner Docs</h2><button onclick="loadRestaurants()">Refresh</button></div><div class="empty">Loading...</div>`;
+      try {
+        const pending = await request("/admin/restaurant/pending");
+        state.pendingRestaurants = pending;
+        el.innerHTML = `<div class="toolbar"><h2>Restaurant Partner Docs</h2><div class="actions"><button class="primary" onclick="approveAllRestaurants()">✓ Approve All Pending</button><button onclick="loadRestaurants()">Refresh</button></div></div>
+          <div id="restaurantProgress" class="progress"></div>
+          <div class="grid">${pending.length ? pending.map(restaurantCard).join("") : `<div class="empty">No pending restaurant documents</div>`}</div>`;
+      } catch (err) {
+        el.innerHTML = `<div class="msg err">${esc(err.message)}</div>`;
+      }
+    }
+
+    function restaurantCard(r) {
+      const missingProfile = !r.partner_id;
+      return `<article class="card" id="card-restaurant-${r.partner_id}">
+        <h2>🏪 ${esc(r.restaurant_name)} — ${esc(r.owner_name || "Owner")}</h2>
+        <div class="meta">Phone: ${esc(r.phone)} • City: ${esc(r.city || "N/A")} • Business: ${esc(r.business_type || "N/A")} • FSSAI: ${esc(r.fssai_number || "N/A")} • Submitted: ${fmtDate(r.submitted_at)} • Status: ${esc(r.status || "DOCS_SUBMITTED")}</div>
+        ${missingProfile ? `<div class="msg err">Partner needs to complete profile setup at /restaurant/profile/setup first</div>` : ""}
+        <strong>DOCUMENTS:</strong>
+        ${docsHtml(r.documents)}
+        <div class="actions">
+          <button class="danger" onclick="toggleReject('restaurant', '${r.partner_id}')">✗ Reject specific doc</button>
+          <button class="primary" ${missingProfile ? "disabled" : ""} onclick="approveRestaurant('${r.partner_id}')">✓ Approve & Go Live</button>
+        </div>
+        ${rejectForm("restaurant", r.partner_id, r.documents)}
+      </article>`;
+    }
+
+    async function approveRestaurant(id) {
+      if (!id || id === "undefined" || id === "null") {
+        showProgress("restaurantProgress", "Partner needs to complete profile setup at /restaurant/profile/setup first");
+        return;
+      }
+      try {
+        await request(`/admin/restaurant/${id}/approve`, { method: "POST" });
+      } catch (err) {
+        const msg = err.message || "";
+        showProgress("restaurantProgress", msg.includes("profile") || msg.includes("partner")
+          ? "Partner needs to complete profile setup at /restaurant/profile/setup first"
+          : msg);
+        return;
+      }
+      const card = document.getElementById(`card-restaurant-${id}`);
+      card.classList.add("approved");
+      card.insertAdjacentHTML("beforeend", `<div class="msg ok">✅ Restaurant is now LIVE</div>`);
+      setTimeout(loadRestaurants, 1000);
+    }
+
+    function showProgress(id, message) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = message;
+    }
+
+    async function approveAllKyc() {
+      const pending = state.pendingKyc || [];
+      for (let i = 0; i < pending.length; i++) {
+        showProgress("kycProgress", `Approving ${i + 1}/${pending.length}...`);
+        await request(`/admin/kyc/${pending[i].partner_id}/approve`, { method: "POST" });
+      }
+      showProgress("kycProgress", "Done ✅");
+      setTimeout(loadKyc, 800);
+    }
+
+    async function approveAllRestaurants() {
+      const all = state.pendingRestaurants || [];
+      const pending = all.filter(r => r.partner_id);
+      if (!pending.length && all.length) {
+        showProgress("restaurantProgress", "Partner needs to complete profile setup at /restaurant/profile/setup first");
+        return;
+      }
+      for (let i = 0; i < pending.length; i++) {
+        showProgress("restaurantProgress", `Approving ${i + 1}/${pending.length}...`);
+        await approveRestaurant(pending[i].partner_id);
+      }
+      showProgress("restaurantProgress", "Done ✅");
+      setTimeout(loadRestaurants, 800);
+    }
+
+    function viewDocument(fileUrl) {
+      const viewer = document.getElementById("viewer");
+      const body = document.getElementById("viewerBody");
+      if (fileUrl === "/uploads/kyc/test/sample.jpg") {
+        body.innerHTML = `<div class="placeholder-img"><div><strong>Test data — no real document uploaded</strong><br><span class="meta">Placeholder image</span></div></div>`;
+        viewer.classList.add("open");
+        return;
+      }
+      window.open(fileUrl, "_blank", "noopener");
+    }
+
+    function closeDocumentViewer() {
+      document.getElementById("viewer")?.classList.remove("open");
+    }
+
+    function toggleReject(kind, id) {
+      document.getElementById(`reject-${kind}-${id}`).classList.toggle("open");
+    }
+
+    async function confirmReject(kind, id) {
+      const form = document.getElementById(`reject-${kind}-${id}`);
+      const body = { doc_type: form.querySelector("select").value, reason: form.querySelector("textarea").value.trim() };
+      if (!body.reason) return;
+      await request(`/admin/${kind === "kyc" ? "kyc" : "restaurant"}/${id}/reject`, { method: "POST", body: JSON.stringify(body) });
+      const card = document.getElementById(`card-${kind}-${id}`);
+      card.classList.add("rejected");
+      card.insertAdjacentHTML("beforeend", `<div class="msg err">❌ Doc rejected</div>`);
+    }
+
+    async function loadOverview() {
+      const el = document.getElementById("overview");
+      el.innerHTML = `<div class="empty">Loading...</div>`;
+      try {
+        const [stats, orders, active] = await Promise.all([
+          request("/admin/stats"),
+          request("/admin/orders/recent"),
+          request("/admin/partners/active")
+        ]);
+        el.innerHTML = `
+          <div class="stats">
+            ${stat("👤 Users", stats.total_users, "total")}
+            ${stat("🛵 Partners", stats.approved_delivery_partners, "KYC approved")}
+            ${stat("🏪 Restaurants", stats.total_restaurants, "live")}
+            ${stat("📦 Orders", stats.orders_today, "today")}
+            ${stat("⏳ Pending KYC", stats.pending_kyc, "awaiting")}
+            ${stat("⏳ Pending Restaurant", stats.pending_restaurant_docs, "awaiting")}
+          </div>
+          <h2>Recent Orders</h2>
+          ${ordersTable(orders)}
+          <h2>Active Delivery Partners</h2>
+          <div class="grid">${active.length ? active.map(p => `<div class="card">${esc(p.fe_id)} — ${esc(p.name || "Partner")}<div class="meta">${esc(p.city || "N/A")} • ${esc(p.current_lat ?? "N/A")}, ${esc(p.current_lng ?? "N/A")}</div></div>`).join("") : `<div class="empty">No active delivery partners</div>`}</div>`;
+      } catch (err) {
+        el.innerHTML = `<div class="msg err">${esc(err.message)}</div>`;
+      }
+    }
+
+    function stat(label, count, sub) {
+      return `<div class="card stat">${esc(label)}<strong>${esc(count)}</strong><span class="meta">${esc(sub)}</span></div>`;
+    }
+
+    function ordersTable(orders) {
+      if (!orders.length) return `<div class="empty">No recent orders</div>`;
+      return `<table><thead><tr><th>Order ID</th><th>Restaurant</th><th>Customer</th><th>Amount</th><th>Status</th><th>Time</th></tr></thead>
+        <tbody>${orders.map(o => `<tr><td>${esc(o.order_id)}</td><td>${esc(o.restaurant)}</td><td>${esc(o.customer)}</td><td>${money(o.amount)}</td><td>${esc(o.status)}</td><td>${fmtDate(o.created_at)}</td></tr>`).join("")}</tbody></table>`;
+    }
+
+    window.approveKyc = approveKyc;
+    window.approveRestaurant = approveRestaurant;
+    window.toggleReject = toggleReject;
+    window.confirmReject = confirmReject;
+    window.loadKyc = loadKyc;
+    window.loadRestaurants = loadRestaurants;
+    window.approveAllKyc = approveAllKyc;
+    window.approveAllRestaurants = approveAllRestaurants;
+    window.viewDocument = viewDocument;
+    window.closeDocumentViewer = closeDocumentViewer;
+
+    state.token ? renderDashboard() : renderLogin();
+  </script>
+</body>
+</html>
